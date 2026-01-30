@@ -1,0 +1,49 @@
+# 基础配置文件
+
+# 模型配置
+model:
+  name: resnet50
+  pretrained: true
+  num_classes: 10
+  input_size: [3, 224, 224]
+  batch_size: 32
+
+# 数据集配置
+dataset:
+  name: imagenette
+  root: ../data_set/imagenette
+  train_dir: train
+  val_dir: val
+  num_workers: 4
+  pin_memory: true
+
+# 量化配置
+quantization:
+  # PTQ配置
+  ptq:
+    enabled: true
+    method: minmax
+    calibration:
+      batch_size: 16
+      num_batches: 10
+      use_random_samples: true
+  
+  # TensorRT配置
+  tensorrt:
+    workspace_size: 1 << 30  # 1GB
+    fp16: false
+    int8: true
+    calibration_cache: ./calibration.cache
+    engine_file: ./resnet50_int8.engine
+
+# 评估配置
+evaluation:
+  metrics: [accuracy, top_k_accuracy]
+  top_k: 5
+  batch_size: 32
+
+# 输出配置
+output:
+  results_dir: ./results
+  logs_dir: ./logs
+  models_dir: ./models/optimized

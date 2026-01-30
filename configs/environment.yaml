@@ -1,0 +1,42 @@
+# 环境配置文件
+
+# CUDA配置
+cuda:
+  version: 11.6
+  arch: sm_86  # 3090 GPU的架构
+
+# Python配置
+python:
+  version: 3.8
+
+# 依赖库版本配置
+libraries:
+  torch: 1.12.0
+  torchvision: 0.13.0
+  numpy: 1.21.5
+  onnx: 1.12.0
+  onnxruntime: 1.12.0
+  tensorrt: 8.4.0
+  opencv-python: 4.6.0.66
+  tqdm: 4.64.0
+  mmdeploy: 1.0.0
+  mmrazor: 0.3.0
+  mmaction2: 0.24.0
+  pyyaml: 6.0
+
+# 设备配置
+device:
+  type: nvidia  # nvidia 或 cpu
+  num_gpus: 4
+  gpu_ids: [0, 1, 2, 3]
+
+# 开发环境配置
+development:
+  ide: vscode
+  debug: false
+  logging_level: info
+
+# 部署配置
+deployment:
+  target: jetson  # jetson 或 pc
+  jetson_model: agx_orin  # nano 或 agx_orin

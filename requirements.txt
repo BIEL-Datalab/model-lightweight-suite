@@ -1,0 +1,4 @@
+# Deprecated: 本仓库已按工具链拆分环境依赖，请优先使用 requirements/ 下的分环境清单。
+# - Torch/TensorRT: requirements/torch241_cu118_py310.txt
+# - ModelOpt: requirements/modelopt_env.txt
+-r requirements/common.txt

@@ -1,0 +1,75 @@
+# 忽略Python缓存文件
+__pycache__/
+*.pyc
+*.pyo
+
+# 忽略虚拟环境
+venv/
+env/
+*.venv/
+
+# 忽略数据文件
+data_set/
+*.data
+*.weights
+
+# 忽略jpg和npy格式的数据集文件
+*.jpg
+*.jpeg 
+*.npy
+**/*.jpg  # 忽略所有子文件夹下的jpg文件
+**/*.jpeg # 忽略所有子文件夹下的jpeg文件
+**/*.JPEG
+**/*.npy  # 忽略所有子文件夹下的npy文件
+
+# 忽略模型文件
+*.pth
+*.pt
+*.onnx
+*.engine
+*.wts
+
+# 忽略评估结果文件
+results/ModelOpt/*
+results/TensorRT/*
+results/Torch/*
+
+# 忽略日志文件
+logs/
+*.log
+*.err
+*.out
+
+# 忽略配置文件
+*.yaml
+*.yml
+*.json
+!base_config.yaml
+!environment.yaml
+requirements.yaml
+
+# 忽略IDE配置文件
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# 忽略操作系统文件
+.DS_Store
+Thumbs.db
+
+# 忽略编译文件
+build/
+dist/
+*.egg-info/
+
+# 忽略CUDA相关文件
+*.cu
+*.cuo
+*.ptx
+*.nvvm
+
+# 忽略TensorRT相关文件
+*.trt
+*.plan
