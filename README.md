@@ -130,7 +130,7 @@ model-tiny-suite/
 如有任何问题或建议，请通过以下方式联系我：
 
 - 邮箱：863392184@qq.com
-- Issues：[GitHub Issues](https://github.com/ZJW-1793/model-tiny-suite/issues)
+- Issues：[GitHub Issues](https://github.com/BIEL-Datalab/model-lightweight-suite/issues)
 
 ## 贡献指南
 - 建议先阅读 docs/developer_guide/ 与各子目录 README（quantization/evaluation/resnet）
