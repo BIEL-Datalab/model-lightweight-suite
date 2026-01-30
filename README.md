@@ -87,7 +87,7 @@ model-tiny-suite/
 | ResNet50 | Jetson orin NX | Orin | TensorRT | INT8 | 224x224 | -0.9 | 7.81 |
 
 ## 已支持模型使用方法
-- [resnet](./resnet/readme.md)
+- [resnet](./resnet/README.md)
 
 ## 代码结构说明
 
