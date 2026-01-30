@@ -1,0 +1,7 @@
+-r common.txt
+torch==2.4.1+cu118 --extra-index-url https://download.pytorch.org/whl/cu118
+torchvision==0.19.1+cu118 --extra-index-url https://download.pytorch.org/whl/cu118
+
+onnx==1.19.1
+onnxruntime-gpu==1.23.2
+nvidia-modelopt

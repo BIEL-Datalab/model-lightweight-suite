@@ -1,0 +1,6 @@
+-r common.txt
+torch==2.4.1+cu118 --extra-index-url https://download.pytorch.org/whl/cu118
+torchvision==0.19.1+cu118 --extra-index-url https://download.pytorch.org/whl/cu118
+
+pycuda==2025.1.2
+pynvml==13.0.1
