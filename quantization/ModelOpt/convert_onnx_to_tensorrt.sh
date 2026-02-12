@@ -171,9 +171,9 @@ TRTEXEC_CMD="$TRTEXEC_CMD --exportProfile=${out_dir}/${base_name}_profile.json"
 TRTEXEC_CMD="$TRTEXEC_CMD --exportLayerInfo=${out_dir}/${base_name}_layers_info.json"
 
 # 显示执行信息
-echo "="*60
+echo "======================================================================="
 echo "ONNX 到 TensorRT 转换脚本"
-echo "="*60
+echo "======================================================================="
 echo "输入ONNX模型: $ONNX_MODEL"
 echo "输出TensorRT引擎: $ENGINE_OUTPUT"
 echo "工作区大小: ${WORKSPACE_SIZE}MB"
@@ -184,10 +184,10 @@ echo "最优输入形状: $OPT_SHAPE"
 echo "最大输入形状: $MAX_SHAPE"
 echo "详细输出: $VERBOSE"
 echo "最佳优化: $BEST"
-echo "="*60
+echo "======================================================================="
 echo "执行命令:"
 echo "$TRTEXEC_CMD"
-echo "="*60
+echo "======================================================================="
 
 # 执行命令
 echo "开始转换..."
@@ -195,17 +195,17 @@ $TRTEXEC_CMD
 
 # 检查命令执行结果
 if [ $? -eq 0 ]; then
-    echo "="*60
+    echo "======================================================================="
 echo "转换成功!"
 echo "输出文件:"
 echo "  - TensorRT引擎: $ENGINE_OUTPUT"
 echo "  - 构建时间: ${out_dir}/${base_name}_build_time.json"
 echo "  - 配置文件: ${out_dir}/${base_name}_profile.json"
 echo "  - 层信息: ${out_dir}/${base_name}_layers_info.json"
-echo "="*60
+echo "======================================================================="
 else
-    echo "="*60
+    echo "======================================================================="
 echo "转换失败!"
-echo "="*60
+echo "======================================================================="
     exit 1
 fi

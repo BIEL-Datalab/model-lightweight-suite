@@ -1,3 +1,9 @@
+"""评估结果可视化工具。
+
+本模块根据评估结果字典生成多种对比图（精度指标、推理性能、资源占用、混淆矩阵等），
+并将图片保存到指定目录，便于快速复查与汇报。
+"""
+
 import matplotlib.pyplot as plt
 import seaborn as sns
 import numpy as np
@@ -7,19 +13,47 @@ import os
 plt.rcParams['font.sans-serif'] = ['SimHei', 'WenQuanYi Zen Hei', 'AR PL UKai CN', 'Noto Sans CJK SC']
 plt.rcParams['axes.unicode_minus'] = False
 
-def generate_visualizations(results: dict, results_dir: str) -> None:
-    """生成模型评估结果的可视化图表。
-    
-    根据模型评估结果生成多种可视化图表，包括精度指标对比、推理时间对比、
-    吞吐量对比、GPU内存占用对比、CPU内存占用对比以及混淆矩阵。
-    
-    Args:
-        results (dict): 包含模型评估结果的字典，键为模型类型（如'fp32'、'int8'），
-            值为该模型的评估指标字典。
-        results_dir (str): 保存可视化图表的目录路径。
-    
-    Returns:
-        None
+def generate_visualizations(results: dict[str, dict[str, object]], results_dir: str) -> None:
+    """生成评估结果可视化图表并保存到目录。
+
+    功能描述：
+    根据 ``results`` 中的评估指标生成多种可视化图表，包括：
+    - 精度指标对比（accuracy/precision/recall/f1_score）
+    - 推理时间与吞吐量对比
+    - GPU/CPU 内存占用对比
+    - 混淆矩阵（归一化）
+
+    参数说明：
+    - results (dict[str, dict[str, object]]): 评估结果字典。
+      外层键通常为 ``'fp32'`` 与 ``'int8'``；内层需包含如下键（类型为 float 或可转换为 float）：
+      ``accuracy``、``precision``、``recall``、``f1_score``、``avg_inference_time_s``、``avg_throughput_fps``、
+      ``avg_gpu_memory_mb``、``avg_cpu_memory_mb``、``confusion_matrix``。
+    - results_dir (str): 图片输出目录路径。
+
+    返回值说明：
+    - None: 无返回值。
+
+    可能抛出的异常：
+    - KeyError: 当 ``results`` 缺少必需键时触发。
+    - OSError: 当无法写入输出目录或保存图片失败时触发。
+
+    使用示例：
+    >>> from utils.visualization_utils import generate_visualizations
+    >>> dummy = {
+    ...     "fp32": {
+    ...         "accuracy": 1.0, "precision": 1.0, "recall": 1.0, "f1_score": 1.0,
+    ...         "avg_inference_time_s": 0.01, "avg_throughput_fps": 100.0,
+    ...         "avg_gpu_memory_mb": 0.0, "avg_cpu_memory_mb": 0.0,
+    ...         "confusion_matrix": [[1]],
+    ...     },
+    ...     "int8": {
+    ...         "accuracy": 1.0, "precision": 1.0, "recall": 1.0, "f1_score": 1.0,
+    ...         "avg_inference_time_s": 0.01, "avg_throughput_fps": 100.0,
+    ...         "avg_gpu_memory_mb": 0.0, "avg_cpu_memory_mb": 0.0,
+    ...         "confusion_matrix": [[1]],
+    ...     },
+    ... }
+    >>> generate_visualizations(dummy, results_dir="results")  # doctest: +SKIP
     """
     print("生成可视化图表...")
     models = ['fp32', 'int8']

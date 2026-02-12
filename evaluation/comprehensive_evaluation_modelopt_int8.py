@@ -1,3 +1,8 @@
+"""ModelOpt INT8 评估综合脚本入口。
+
+本脚本用于在固定环境与默认路径配置下运行 ModelOpt INT8 评估流水线，并将结果落盘到 results 目录。
+"""
+
 import os
 import sys
 import warnings
@@ -20,6 +25,28 @@ from evaluation.modelopt.pipeline import run_benchmark
 
 
 def main(device: torch.device, enable_visualization: bool = False) -> str:
+    """运行 ModelOpt INT8 评估并返回结果目录。
+
+    功能描述：
+    按本仓库约定的默认路径构建配置与路径对象，调用 ``evaluation.modelopt.pipeline.run_benchmark`` 执行评估，
+    并返回结果目录路径。
+
+    参数说明：
+    - device (torch.device): 推理设备。
+    - enable_visualization (bool): 是否启用评估结果可视化输出。
+
+    返回值说明：
+    - str: 结果目录路径。
+
+    可能抛出的异常：
+    - FileNotFoundError: 当默认模型/数据集路径不存在时触发。
+    - Exception: 当评估流程内部依赖执行失败时触发。
+
+    使用示例：
+    >>> import torch
+    >>> from evaluation.comprehensive_evaluation_modelopt_int8 import main
+    >>> _ = main(device=torch.device("cpu"), enable_visualization=False)  # doctest: +SKIP
+    """
     paths = ModelOptEvalPaths(
         pytorch_model_path=os.path.join(project_root, "models/trained/resnet50_imagenette_best_8031.pth"),
         onnx_original_path=os.path.join(project_root, "models/converted/resnet50_imagenette_modelopt_x86.onnx"),
@@ -54,4 +81,3 @@ if __name__ == "__main__":
     device = torch.device(args.device)
     result_dir = main(device=device, enable_visualization=args.visualization)
     print(f"所有结果已保存到: {result_dir}")
-

@@ -1,3 +1,12 @@
+"""TensorRT INT8 量化相关工具集。
+
+本模块提供从 PyTorch 权重转换到 TensorRT 可用格式（WTS/engine）、构建 ResNet50 网络、
+实现 INT8 校准器以及进行简单推理验证的脚本化工具函数。
+
+注意：
+- 本模块依赖 ``tensorrt``、``pycuda`` 等运行时组件；在缺少依赖的环境中导入会失败，这是由依赖要求决定的。
+"""
+
 import os
 import struct
 import sys
@@ -18,8 +27,37 @@ import tensorrt as trt
 import numpy as np
 
 
-def add_batchnorm_2d(network: trt.INetworkDefinition, weight_map: dict, input_tensor: trt.ITensor, layer_name: str, eps: float = 1e-5) -> trt.IScaleLayer:
-    """向TensorRT网络添加BatchNorm2d层。"""
+def add_batchnorm_2d(
+    network: "trt.INetworkDefinition",
+    weight_map: dict[str, "np.ndarray"],
+    input_tensor: "trt.ITensor",
+    layer_name: str,
+    eps: float = 1e-5,
+) -> "trt.IScaleLayer":
+    """向 TensorRT 网络添加 BatchNorm2d 层。
+
+    功能描述：
+    读取 ``weight_map`` 中指定层名对应的 BatchNorm 参数（weight/bias/running_mean/running_var），
+    计算 scale/shift 并通过 ``network.add_scale`` 将 BatchNorm 以 Scale 层形式注入网络。
+
+    参数说明：
+    - network (trt.INetworkDefinition): TensorRT 网络定义对象。
+    - weight_map (dict[str, np.ndarray]): 权重字典，键为参数名，值为 NumPy 数组。
+    - input_tensor (trt.ITensor): 输入张量。
+    - layer_name (str): BatchNorm 层名前缀（不含 ``.weight`` 等后缀）。
+    - eps (float): 数值稳定项，默认 1e-5。
+
+    返回值说明：
+    - trt.IScaleLayer: TensorRT Scale 层对象。
+
+    可能抛出的异常：
+    - KeyError: 当 ``weight_map`` 缺少必要键时触发。
+    - Exception: 当 TensorRT API 调用失败时由底层触发。
+
+    使用示例：
+    >>> from utils.tensorrt_quantization_utils import add_batchnorm_2d
+    >>> _ = add_batchnorm_2d(object(), {}, object(), "bn1")  # doctest: +SKIP
+    """
     gamma = weight_map[layer_name + ".weight"]
     beta = weight_map[layer_name + ".bias"]
     mean = weight_map[layer_name + ".running_mean"]
@@ -35,8 +73,43 @@ def add_batchnorm_2d(network: trt.INetworkDefinition, weight_map: dict, input_te
 
 
 
-def bottleneck(network: trt.INetworkDefinition, weight_map: dict, input_tensor: trt.ITensor, in_channels: int, out_channels: int, stride: int, layer_name: str, eps: float = 1e-5) -> trt.IActivationLayer:
-    """向TensorRT网络添加ResNet的Bottleneck块。"""
+def bottleneck(
+    network: "trt.INetworkDefinition",
+    weight_map: dict[str, "np.ndarray"],
+    input_tensor: "trt.ITensor",
+    in_channels: int,
+    out_channels: int,
+    stride: int,
+    layer_name: str,
+    eps: float = 1e-5,
+) -> "trt.IActivationLayer":
+    """向 TensorRT 网络添加 ResNet Bottleneck 块。
+
+    功能描述：
+    按 ResNet50 的 bottleneck 结构依次添加 1x1、3x3、1x1 卷积与对应 BatchNorm+ReLU，
+    并根据 stride/通道数决定是否创建 downsample 分支，最后通过 elementwise sum 实现残差连接。
+
+    参数说明：
+    - network (trt.INetworkDefinition): TensorRT 网络定义对象。
+    - weight_map (dict[str, np.ndarray]): 权重字典。
+    - input_tensor (trt.ITensor): 输入张量。
+    - in_channels (int): 输入通道数（用于判断是否需要 downsample）。
+    - out_channels (int): bottleneck 的中间通道数。
+    - stride (int): 3x3 卷积步幅。
+    - layer_name (str): 该 block 的层名前缀（例如 ``"layer1.0."``）。
+    - eps (float): BatchNorm 数值稳定项，默认 1e-5。
+
+    返回值说明：
+    - trt.IActivationLayer: 最后一层 ReLU 的 TensorRT layer 对象。
+
+    可能抛出的异常：
+    - KeyError: 当 ``weight_map`` 缺少必要权重键时触发。
+    - AssertionError: 当 TensorRT layer 创建失败（返回 None）时触发。
+
+    使用示例：
+    >>> from utils.tensorrt_quantization_utils import bottleneck
+    >>> _ = bottleneck(object(), {}, object(), 64, 64, 1, "layer1.0.")  # doctest: +SKIP
+    """
     # 1x1卷积
     conv1 = network.add_convolution_nd(
         input=input_tensor,
@@ -107,13 +180,36 @@ def bottleneck(network: trt.INetworkDefinition, weight_map: dict, input_tensor: 
 
 
 def build_resnet50_network(
-    network: trt.INetworkDefinition, 
-    weight_map: dict, 
-    input_tensor: trt.ITensor, 
+    network: "trt.INetworkDefinition", 
+    weight_map: dict[str, "np.ndarray"], 
+    input_tensor: "trt.ITensor", 
     output_size: int, 
     eps: float = 1e-5
-) -> trt.ITensor:
-    """构建ResNet50网络结构。"""
+) -> "trt.ITensor":
+    """构建 ResNet50 的 TensorRT 网络结构并返回输出张量。
+
+    功能描述：
+    基于给定权重字典按 ResNet50 拓扑构建 TensorRT 网络，包括初始卷积、四个 stage 的 bottleneck 堆叠、
+    全局平均池化与全连接输出（以矩阵乘法 + bias 的形式实现）。
+
+    参数说明：
+    - network (trt.INetworkDefinition): TensorRT 网络定义对象。
+    - weight_map (dict[str, np.ndarray]): 权重字典（键为参数名，值为 NumPy 数组）。
+    - input_tensor (trt.ITensor): 输入张量。
+    - output_size (int): 输出类别数。
+    - eps (float): BatchNorm 数值稳定项，默认 1e-5。
+
+    返回值说明：
+    - trt.ITensor: 网络输出张量（尚未 mark_output）。
+
+    可能抛出的异常：
+    - KeyError: 当 ``weight_map`` 缺少必要权重键时触发。
+    - Exception: 当 TensorRT API 调用失败时由底层触发。
+
+    使用示例：
+    >>> from utils.tensorrt_quantization_utils import build_resnet50_network
+    >>> _ = build_resnet50_network(object(), {}, object(), output_size=10)  # doctest: +SKIP
+    """
     print("  - 开始构建ResNet50网络结构...")
     
     # 初始层
@@ -203,17 +299,26 @@ def build_resnet50_network(
 
 
 def convert_pth_to_wts(pth_path: str, wts_path: str, model_name: str = "resnet50") -> bool:
-    """将PyTorch模型转换为WTS格式。
-    
-    读取PyTorch模型文件(.pth或.pt)，将权重转换为TensorRT WTS格式并保存。
-    
-    Args:
-        pth_path (str): 输入PyTorch模型文件路径。
-        wts_path (str): 输出WTS文件路径。
-        model_name (str, optional): 模型名称，用于日志输出，默认"resnet50"。
-    
-    Returns:
-        bool: 转换是否成功。
+    """将 PyTorch 模型权重转换为 TensorRT WTS 文件。
+
+    功能描述：
+    读取 ``pth_path`` 指向的模型对象或权重字典，将其按 TensorRT 常见 WTS 文本格式写入 ``wts_path``，
+    以供后续 TensorRT 网络构建加载。
+
+    参数说明：
+    - pth_path (str): 输入 PyTorch 模型文件路径（通常为 ``.pth`` 或 ``.pt``）。
+    - wts_path (str): 输出 WTS 文件路径。
+    - model_name (str): 模型名称（用于日志输出），默认 ``"resnet50"``。
+
+    返回值说明：
+    - bool: 转换成功返回 ``True``；加载或写入失败返回 ``False``。
+
+    可能抛出的异常：
+    - 无。函数内部捕获异常并返回 ``False``（但部分路径/权限错误可能在外部依赖处直接中断）。
+
+    使用示例：
+    >>> from utils.tensorrt_quantization_utils import convert_pth_to_wts
+    >>> _ = convert_pth_to_wts("model.pth", "model.wts")  # doctest: +SKIP
     """
     print("\n" + "="*60)
     print("PyTorch模型转WTS格式脚本")
@@ -280,21 +385,42 @@ def convert_pth_to_wts(pth_path: str, wts_path: str, model_name: str = "resnet50
 
 # INT8校准器实现
 class Int8Calibrator(trt.IInt8MinMaxCalibrator):
-    """TensorRT INT8校准器类，用于生成校准数据。
-    
-    实现了TensorRT的IInt8MinMaxCalibrator接口，用于收集校准数据
-    以生成INT8量化所需的缩放因子。
-    
-    Args:
-        calib_image_dir (str): 校准图像目录路径。
-        batch_size (int): 校准批次大小。
-        input_shape (tuple): 模型输入形状，格式为(通道数, 高度, 宽度)。
-        cache_file (str, optional): 校准缓存文件路径，默认"calib_cache.bin"。
-        input_h (int, optional): 输入图像高度，默认224。
-        input_w (int, optional): 输入图像宽度，默认224。
-        calib_dataset_size (int, optional): 校准数据集大小，默认2000。
+    """TensorRT INT8 MinMax 校准器实现。
+
+    功能描述：
+    实现 TensorRT 的 ``IInt8MinMaxCalibrator`` 接口，用于在 INT8 构建引擎时提供校准 batch，
+    以生成量化所需的 scale/zero-point 等统计信息，并支持读写校准缓存文件以加速重复构建。
+
+    参数说明：
+    - calib_image_dir (str): 校准图像目录路径（目录内通常为 ``.jpg/.png/.jpeg`` 文件）。
+    - batch_size (int): 校准批次大小。
+    - input_shape (tuple[int, int, int]): 模型输入形状，格式为 ``(C, H, W)``。
+    - cache_file (str): 校准缓存文件路径，默认 ``"calib_cache.bin"``。
+    - input_h (int): 输入图像高度，默认 224。
+    - input_w (int): 输入图像宽度，默认 224。
+    - calib_dataset_size (int): 校准数据集大小上限，默认 2000。
+
+    返回值说明：
+    - Int8Calibrator: 校准器实例。
+
+    可能抛出的异常：
+    - ValueError: 当校准图像数量小于 ``batch_size`` 时触发。
+    - OSError: 当申请 CUDA 内存或文件读写失败时触发（由底层依赖触发）。
+
+    使用示例：
+    >>> from utils.tensorrt_quantization_utils import Int8Calibrator
+    >>> _ = Int8Calibrator("calib_images", batch_size=8, input_shape=(3, 224, 224))  # doctest: +SKIP
     """
-    def __init__(self, calib_image_dir: str, batch_size: int, input_shape: tuple, cache_file: str = "calib_cache.bin", input_h: int = 224, input_w: int = 224, calib_dataset_size: int = 2000):
+    def __init__(
+        self,
+        calib_image_dir: str,
+        batch_size: int,
+        input_shape: tuple[int, int, int],
+        cache_file: str = "calib_cache.bin",
+        input_h: int = 224,
+        input_w: int = 224,
+        calib_dataset_size: int = 2000,
+    ) -> None:
         trt.IInt8MinMaxCalibrator.__init__(self)
         
         self.batch_size = batch_size
@@ -334,9 +460,43 @@ class Int8Calibrator(trt.IInt8MinMaxCalibrator):
         print(f"  - 已分配校准设备内存: {memory_size / (1024**2):.2f} MB")
     
     def get_batch_size(self) -> int:
+        """获取校准批次大小。
+
+        功能描述：
+        TensorRT 调用该方法以获知校准器提供的 batch 大小。
+
+        参数说明：
+        - 无。
+
+        返回值说明：
+        - int: 批次大小。
+
+        可能抛出的异常：
+        - 无。
+        """
         return self.batch_size
     
-    def get_batch(self, names: list) -> list:
+    def get_batch(self, names: list[str]) -> list[int] | None:
+        """提供一个校准 batch 的设备指针列表。
+
+        功能描述：
+        读取一批图片并执行与训练/评估一致的预处理（Resize/CenterCrop/Normalize），
+        将结果拷贝到设备端输入缓冲区并返回其指针列表。若已遍历完所有校准图片则返回 ``None``。
+
+        参数说明：
+        - names (list[str]): TensorRT 提供的输入名称列表（当前实现不使用该参数）。
+
+        返回值说明：
+        - list[int] | None: 设备端输入缓冲区指针列表；若无更多 batch 则返回 ``None``。
+
+        可能抛出的异常：
+        - Exception: 当图片读取、预处理或 CUDA 拷贝失败时由底层依赖触发。
+
+        使用示例：
+        >>> from utils.tensorrt_quantization_utils import Int8Calibrator
+        >>> _ = Int8Calibrator("calib_images", batch_size=8, input_shape=(3, 224, 224))  # doctest: +SKIP
+        >>> _ = _.get_batch(names=["input"])  # doctest: +SKIP
+        """
         if self.current_index >= len(self.image_list):
             print("校准完成，无更多批次")
             return None
@@ -383,7 +543,21 @@ class Int8Calibrator(trt.IInt8MinMaxCalibrator):
         self.current_index = end_index
         return [int(self.device_input)]
     
-    def read_calibration_cache(self) -> bytes:
+    def read_calibration_cache(self) -> bytes | None:
+        """读取校准缓存文件内容。
+
+        功能描述：
+        若 ``cache_file`` 存在则读取并返回其二进制内容；否则返回 ``None`` 表示需要重新校准。
+
+        参数说明：
+        - 无。
+
+        返回值说明：
+        - bytes | None: 校准缓存内容；不存在时为 ``None``。
+
+        可能抛出的异常：
+        - OSError: 当读取文件失败时触发。
+        """
         if os.path.exists(self.cache_file):
             with open(self.cache_file, "rb") as f:
                 cache_data = f.read()
@@ -393,18 +567,33 @@ class Int8Calibrator(trt.IInt8MinMaxCalibrator):
         return None
     
     def write_calibration_cache(self, cache: bytes) -> None:
+        """写入校准缓存文件。
+
+        功能描述：
+        将 TensorRT 生成的校准缓存写入 ``cache_file``，以便后续构建直接复用。
+
+        参数说明：
+        - cache (bytes): 校准缓存内容。
+
+        返回值说明：
+        - None: 无返回值。
+
+        可能抛出的异常：
+        - OSError: 当写入文件失败时触发。
+        """
         with open(self.cache_file, "wb") as f:
             f.write(cache)
         print(f"校准缓存已保存: {self.cache_file}")
     
     def __del__(self) -> None:
+        """析构时释放设备端输入缓冲区。"""
         if hasattr(self, 'device_input') and self.device_input is not None:
             self.device_input.free()
             print("释放校准器设备内存")
 
 
 
-def load_weights(file_path: str) -> dict:
+def load_weights(file_path: str) -> dict[str, "np.ndarray"]:
     """加载WTS格式的权重文件。
     
     从指定路径加载WTS格式的权重文件，并将其转换为字典格式。
@@ -413,11 +602,15 @@ def load_weights(file_path: str) -> dict:
         file_path (str): WTS权重文件路径。
     
     Returns:
-        dict: 包含权重的字典，键为层名称，值为对应的权重数组。
+        dict[str, np.ndarray]: 包含权重的字典，键为层名称，值为对应的权重数组。
     
     Raises:
         AssertionError: 如果权重文件不存在。
         ValueError: 如果权重文件格式不支持。
+    
+    使用示例：
+    >>> from utils.tensorrt_quantization_utils import load_weights
+    >>> _ = load_weights("model.wts")  # doctest: +SKIP
     """
     print(f"Loading weights: {file_path}")
 
@@ -460,7 +653,41 @@ def build_engine(max_batch_size: int, builder: trt.Builder, config: trt.IBuilder
                  input_blob_name: str = "data", input_h: int = 224, input_w: int = 224, output_size: int = 10,
                  output_blob_name: str = "prob", eps: float = 1e-5, calib_dir: str = "calib_images",
                  calib_batch_size: int = 8, calib_input_shape: tuple = (3, 224, 224), calib_dataset_size: int = 2000) -> trt.IHostMemory:
-    """构建TensorRT引擎。"""
+    """构建并序列化 TensorRT 引擎。
+
+    功能描述：
+    加载 WTS 权重，创建显式 batch 网络，构建 ResNet50 拓扑并按需启用 INT8 校准，
+    最终调用 TensorRT builder 生成序列化引擎（IHostMemory）。
+
+    参数说明：
+    - max_batch_size (int): 网络输入的 batch 维度大小（显式 batch 模式下作为 shape 的第 0 维）。
+    - builder (trt.Builder): TensorRT Builder。
+    - config (trt.IBuilderConfig): Builder 配置对象。
+    - input_dtype (trt.DataType): 输入张量数据类型。
+    - use_int8 (bool): 是否启用 INT8 量化，默认 False。
+    - weight_path (str): WTS 权重路径。
+    - input_blob_name (str): 输入张量名称。
+    - input_h (int): 输入高度。
+    - input_w (int): 输入宽度。
+    - output_size (int): 输出类别数。
+    - output_blob_name (str): 输出张量名称。
+    - eps (float): BatchNorm 数值稳定项。
+    - calib_dir (str): 校准图片目录。
+    - calib_batch_size (int): 校准 batch 大小。
+    - calib_input_shape (tuple): 校准输入形状（C, H, W）。
+    - calib_dataset_size (int): 校准数据集大小上限。
+
+    返回值说明：
+    - trt.IHostMemory: 序列化后的引擎二进制内容。
+
+    可能抛出的异常：
+    - FileNotFoundError: 当权重或校准目录不存在且需要 INT8 时可能触发。
+    - RuntimeError: 当构建网络或引擎失败时由 TensorRT 触发。
+
+    使用示例：
+    >>> from utils.tensorrt_quantization_utils import build_engine
+    >>> _ = build_engine(1, object(), object(), object())  # doctest: +SKIP
+    """
     print("\n开始构建TensorRT引擎...")
     print("  - 显式批处理模式: 启用")
     print(f"  - INT8量化: {'启用' if use_int8 else '禁用'}")
@@ -513,7 +740,39 @@ def serialize_engine(max_batch_size: int, use_int8: bool = False,
                    input_blob_name: str = "data", input_h: int = 224, input_w: int = 224, output_size: int = 10,
                    output_blob_name: str = "prob", eps: float = 1e-5, calib_dir: str = "calib_images",
                    calib_batch_size: int = 8, engine_path: str = "resnet50_int8_v2.engine", calib_dataset_size: int = 2000) -> None:
-    """序列化TensorRT引擎。"""
+    """构建并保存 TensorRT 引擎文件。
+
+    功能描述：
+    在需要 INT8 时校验并定位校准目录，随后调用 ``build_engine`` 构建序列化引擎，
+    将其保存到 ``engine_path``，并通过反序列化进行基本完整性验证。
+
+    参数说明：
+    - max_batch_size (int): 最大 batch 大小（用于显式 batch shape）。
+    - use_int8 (bool): 是否启用 INT8 量化，默认 False。
+    - weight_path (str): WTS 权重文件路径。
+    - input_blob_name (str): 输入名称。
+    - input_h (int): 输入高度。
+    - input_w (int): 输入宽度。
+    - output_size (int): 输出类别数。
+    - output_blob_name (str): 输出名称。
+    - eps (float): BatchNorm 数值稳定项。
+    - calib_dir (str): 校准图片目录。
+    - calib_batch_size (int): 校准 batch 大小。
+    - engine_path (str): 引擎文件输出路径。
+    - calib_dataset_size (int): 校准数据集大小上限。
+
+    返回值说明：
+    - None: 无返回值。
+
+    可能抛出的异常：
+    - FileNotFoundError: 当 INT8 启用但未找到校准图像目录时触发。
+    - RuntimeError: 当引擎构建或验证失败时触发。
+    - OSError: 当保存引擎文件失败时触发。
+
+    使用示例：
+    >>> from utils.tensorrt_quantization_utils import serialize_engine
+    >>> serialize_engine(1, use_int8=False, weight_path="model.wts")  # doctest: +SKIP
+    """
     print("\n" + "="*50)
     print("TensorRT ResNet50 INT8 量化流程")
     print("="*50)
@@ -592,7 +851,26 @@ def serialize_engine(max_batch_size: int, use_int8: bool = False,
 
 
 def test_inference(engine_path: str = "resnet50_int8_v2.engine") -> None:
-    """测试TensorRT引擎的推理功能。"""
+    """测试 TensorRT 引擎的推理功能。
+
+    功能描述：
+    加载 ``engine_path`` 指向的 TensorRT 引擎，创建执行上下文并对随机输入执行一次推理，
+    打印输出张量形状与值范围，作为引擎可用性的快速验证手段。
+
+    参数说明：
+    - engine_path (str): TensorRT 引擎文件路径，默认 ``"resnet50_int8_v2.engine"``。
+
+    返回值说明：
+    - None: 无返回值。
+
+    可能抛出的异常：
+    - FileNotFoundError: 当引擎文件不存在时触发。
+    - RuntimeError: 当引擎加载、上下文创建或推理执行失败时触发。
+
+    使用示例：
+    >>> from utils.tensorrt_quantization_utils import test_inference
+    >>> test_inference("model.engine")  # doctest: +SKIP
+    """
     print("\n" + "="*50)
     print("测试TensorRT引擎推理")
     print("="*50)

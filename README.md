@@ -25,8 +25,6 @@
 - Python：3.10（环境名中的 py310 为默认推荐）
 - NVIDIA GPU：TensorRT / ONNXRuntime GPU / CUDAExecutionProvider 相关功能需要
 
-注意：仓库根目录仍保留 requirements.txt，但它不再代表“单一可用环境”，请以 requirements/ 下的分环境清单为准。
-
 ## 快速开始
 
 ### 1) 安装依赖

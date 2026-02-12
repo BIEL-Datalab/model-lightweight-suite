@@ -39,6 +39,7 @@ logs/
 *.log
 *.err
 *.out
+*.bin
 
 # 忽略配置文件
 *.yaml

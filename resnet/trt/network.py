@@ -1,9 +1,39 @@
+"""ResNet50 TensorRT 网络构建函数。
+
+本模块以函数方式构建 ResNet50 的 TensorRT 网络拓扑（显式 batch），并提供 BatchNorm 与 bottleneck 的构建辅助函数。
+"""
+
 from __future__ import annotations
 
 import numpy as np
 
 
-def add_batchnorm_2d(network, weight_map: dict[str, np.ndarray], input_tensor, layer_name: str, eps: float):
+def add_batchnorm_2d(
+    network: object, weight_map: dict[str, np.ndarray], input_tensor: object, layer_name: str, eps: float
+) -> object:
+    """向 TensorRT 网络添加 BatchNorm2d 对应的 Scale 层。
+
+    功能描述：
+    从 ``weight_map`` 中读取 BatchNorm 参数并计算 scale/shift，通过 ``network.add_scale`` 注入网络。
+
+    参数说明：
+    - network (object): TensorRT 网络定义对象。
+    - weight_map (dict[str, np.ndarray]): 权重字典。
+    - input_tensor (object): 输入张量对象。
+    - layer_name (str): BatchNorm 层名前缀（不含 ``.weight`` 等后缀）。
+    - eps (float): 数值稳定项。
+
+    返回值说明：
+    - object: TensorRT Scale layer 对象。
+
+    可能抛出的异常：
+    - KeyError: 当 ``weight_map`` 缺少必要键时触发。
+    - Exception: 当 TensorRT API 调用失败时由底层触发。
+
+    使用示例：
+    >>> from resnet.trt.network import add_batchnorm_2d
+    >>> _ = add_batchnorm_2d(object(), {}, object(), "bn1", 1e-5)  # doctest: +SKIP
+    """
     import tensorrt as trt
 
     gamma = weight_map[layer_name + ".weight"]
@@ -19,15 +49,41 @@ def add_batchnorm_2d(network, weight_map: dict[str, np.ndarray], input_tensor, l
 
 
 def bottleneck(
-    network,
+    network: object,
     weight_map: dict[str, np.ndarray],
-    input_tensor,
+    input_tensor: object,
     in_channels: int,
     out_channels: int,
     stride: int,
     layer_name: str,
     eps: float,
-):
+) -> object:
+    """向 TensorRT 网络添加 ResNet bottleneck 块。
+
+    功能描述：
+    构建 1x1、3x3、1x1 卷积与对应 BN+ReLU，并在需要时创建 downsample 分支后做残差相加。
+
+    参数说明：
+    - network (object): TensorRT 网络定义对象。
+    - weight_map (dict[str, np.ndarray]): 权重字典。
+    - input_tensor (object): 输入张量对象。
+    - in_channels (int): 输入通道数。
+    - out_channels (int): bottleneck 中间通道数。
+    - stride (int): 3x3 卷积步幅。
+    - layer_name (str): block 层名前缀（例如 ``"layer1.0."``）。
+    - eps (float): BatchNorm 数值稳定项。
+
+    返回值说明：
+    - object: 最后一层 ReLU 的 TensorRT layer 对象。
+
+    可能抛出的异常：
+    - KeyError: 当 ``weight_map`` 缺少必要权重键时触发。
+    - Exception: 当 TensorRT API 调用失败时由底层触发。
+
+    使用示例：
+    >>> from resnet.trt.network import bottleneck
+    >>> _ = bottleneck(object(), {}, object(), 64, 64, 1, "layer1.0.", 1e-5)  # doctest: +SKIP
+    """
     import tensorrt as trt
 
     conv1 = network.add_convolution_nd(
@@ -81,8 +137,8 @@ def bottleneck(
 
 
 def build_resnet50_network(
-    network,
-    input_tensor,
+    network: object,
+    input_tensor: object,
     weight_map: dict[str, np.ndarray],
     input_h: int,
     input_w: int,
@@ -90,7 +146,35 @@ def build_resnet50_network(
     output_blob_name: str,
     eps: float,
     use_int8: bool,
-):
+) -> None:
+    """构建 ResNet50 的 TensorRT 网络并标记输出。
+
+    功能描述：
+    在 ``network`` 上构建 ResNet50 拓扑并最终 ``mark_output``；
+    当 ``use_int8`` 为 True 时，会将最后的 matmul 与 add 输出强制为 FLOAT 以提升兼容性。
+
+    参数说明：
+    - network (object): TensorRT 网络定义对象。
+    - input_tensor (object): 输入张量对象。
+    - weight_map (dict[str, np.ndarray]): 权重字典。
+    - input_h (int): 输入高度。
+    - input_w (int): 输入宽度。
+    - output_size (int): 输出类别数。
+    - output_blob_name (str): 输出张量名称。
+    - eps (float): BatchNorm 数值稳定项。
+    - use_int8 (bool): 是否启用 INT8 相关精度设置。
+
+    返回值说明：
+    - None: 无返回值；函数内部直接 ``mark_output``。
+
+    可能抛出的异常：
+    - KeyError: 当 ``weight_map`` 缺少必要权重键时触发。
+    - Exception: 当 TensorRT API 调用失败时由底层触发。
+
+    使用示例：
+    >>> from resnet.trt.network import build_resnet50_network
+    >>> build_resnet50_network(object(), object(), {}, 224, 224, 10, "prob", 1e-5, True)  # doctest: +SKIP
+    """
     import tensorrt as trt
 
     conv1 = network.add_convolution_nd(
@@ -159,4 +243,3 @@ def build_resnet50_network(
     output_tensor = output_layer.get_output(0)
     output_tensor.name = output_blob_name
     network.mark_output(output_tensor)
-
