@@ -1,3 +1,9 @@
+"""ModelOpt 评估流水线封装。
+
+本模块将数据集子集构建、不同后端模型加载、精度/性能评估、报告落盘与可视化生成串联起来，
+对外提供一个统一的 ``run_benchmark`` 入口函数。
+"""
+
 from __future__ import annotations
 
 import os
@@ -22,6 +28,57 @@ from .reporting import build_json_report, build_markdown_report
 
 
 def run_benchmark(config: ModelOptEvalConfig, paths: ModelOptEvalPaths, device: torch.device, enable_visualization: bool) -> str:
+    """运行基于 ModelOpt 的 INT8 评估基准并输出结果目录。
+
+    功能描述：
+    该函数按固定流程完成：
+    1) 校验模型/数据集路径；
+    2) 构建可复现的验证集子集 DataLoader；
+    3) 加载 PyTorch/ONNX/TensorRT 模型；
+    4) 执行精度评估与性能评估；
+    5) 生成 JSON 与 Markdown 报告并写入结果目录；
+    6) 可选地生成可视化图表。
+
+    参数说明：
+    - config (ModelOptEvalConfig): 评估参数配置。
+    - paths (ModelOptEvalPaths): 评估路径配置。
+    - device (torch.device): 推理设备。
+    - enable_visualization (bool): 是否生成可视化图表。
+
+    返回值说明：
+    - str: 结果目录路径（包含 JSON/Markdown/图表等文件）。
+
+    可能抛出的异常：
+    - FileNotFoundError: 当模型或数据集路径不存在时由 ``validate_file_path`` 触发。
+    - Exception: 当模型加载、推理或写文件失败时由底层依赖触发。
+
+    使用示例：
+    >>> import torch
+    >>> from evaluation.modelopt.config import ModelOptEvalConfig, ModelOptEvalPaths
+    >>> from evaluation.modelopt.pipeline import run_benchmark
+    >>> _ = run_benchmark(  # doctest: +SKIP
+    ...     config=ModelOptEvalConfig(
+    ...         batch_size=1,
+    ...         num_classes=10,
+    ...         num_workers=0,
+    ...         test_sample_count=10,
+    ...         random_seed=42,
+    ...         num_warmup_batches=0,
+    ...         num_warmup=0,
+    ...         num_iterations=1,
+    ...     ),
+    ...     paths=ModelOptEvalPaths(
+    ...         pytorch_model_path="m.pth",
+    ...         onnx_original_path="m.onnx",
+    ...         onnx_quantized_path="m_int8.onnx",
+    ...         tensorrt_engine_path="m.engine",
+    ...         dataset_path="data_set/imagenette",
+    ...         results_root="results",
+    ...     ),
+    ...     device=torch.device("cpu"),
+    ...     enable_visualization=False,
+    ... )
+    """
     model_paths = {
         "pytorch": paths.pytorch_model_path,
         "onnx_original": paths.onnx_original_path,
@@ -56,7 +113,7 @@ def run_benchmark(config: ModelOptEvalConfig, paths: ModelOptEvalPaths, device: 
     )
     tensorrt_engine, tensorrt_context = load_tensorrt_engine(paths.tensorrt_engine_path, device=device)
 
-    results: dict = {
+    results: dict[str, dict[str, object]] = {
         "pytorch": {},
         "onnx_original": {},
         "onnx_quantized": {},
@@ -182,7 +239,7 @@ def run_benchmark(config: ModelOptEvalConfig, paths: ModelOptEvalPaths, device: 
     write_text(md_path, build_markdown_report(results, model_paths=model_paths, device_display=str(device), batch_size=config.batch_size))
 
     if enable_visualization:
-        viz_results: dict = {}
+        viz_results: dict[str, dict[str, object]] = {}
         for model_key, model_type in [("pytorch", "fp32"), ("tensorrt", "int8")]:
             result = dict(results[model_key])
             if "avg_inference_time" in result:
@@ -195,4 +252,3 @@ def run_benchmark(config: ModelOptEvalConfig, paths: ModelOptEvalPaths, device: 
         generate_visualizations(viz_results, result_folder)
 
     return result_folder
-

@@ -1,3 +1,8 @@
+"""ResNet TensorRT PTQ 命令行入口。
+
+本模块提供一个基于 argparse 的命令行工具，封装校准图片准备与 TensorRT 引擎构建/验证流程。
+"""
+
 import argparse
 
 from resnet.config import CalibImagesConfig, TensorRTPTQConfig
@@ -5,6 +10,28 @@ from resnet.workflows import run_prepare_calib_images, run_tensorrt_ptq
 
 
 def build_parser() -> argparse.ArgumentParser:
+    """构建命令行参数解析器。
+
+    功能描述：
+    创建包含子命令的 argparse 解析器：
+    - ``calib-images``：准备 INT8 校准图片
+    - ``trt-ptq``：构建/测试 TensorRT 引擎（可选 INT8）
+
+    参数说明：
+    - 无。
+
+    返回值说明：
+    - argparse.ArgumentParser: 解析器对象。
+
+    可能抛出的异常：
+    - 无。
+
+    使用示例：
+    >>> from resnet.run import build_parser
+    >>> p = build_parser()
+    >>> isinstance(p, object)
+    True
+    """
     parser = argparse.ArgumentParser(prog="resnet.run", description="ResNet TensorRT PTQ 工具集")
     sub = parser.add_subparsers(dest="cmd", required=True)
 
@@ -39,6 +66,26 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> None:
+    """命令行主入口函数。
+
+    功能描述：
+    解析参数后根据子命令调用对应工作流：
+    - ``calib-images``：构造 ``CalibImagesConfig`` 并调用 ``run_prepare_calib_images``
+    - ``trt-ptq``：构造 ``TensorRTPTQConfig`` 并调用 ``run_tensorrt_ptq``
+
+    参数说明：
+    - argv (list[str] | None): 参数列表；为 ``None`` 时从命令行读取。
+
+    返回值说明：
+    - None: 无返回值。
+
+    可能抛出的异常：
+    - ValueError/FileNotFoundError: 当工作流参数非法或路径不存在时由下游抛出。
+
+    使用示例：
+    >>> from resnet.run import main
+    >>> main(["calib-images", "--help"])  # doctest: +SKIP
+    """
     args = build_parser().parse_args(argv)
     if args.cmd == "calib-images":
         cfg = CalibImagesConfig(

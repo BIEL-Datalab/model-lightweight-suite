@@ -1,27 +1,47 @@
+"""数据加载相关工具。
+
+本模块封装了基于 torchvision.datasets.ImageFolder 的数据集构建与 DataLoader 创建逻辑，
+用于训练、验证以及量化校准（calibration）等流程的统一数据输入。
+"""
+
 import torch
 import os  
 from torchvision import datasets, transforms
 from torch.utils.data import DataLoader, random_split, Dataset  
 import copy
+from PIL import ImageFile
 
-def get_data_loaders(data_root: str, batch_size: int = 256, num_workers: int = 47, device: torch.device = None) -> tuple[DataLoader, DataLoader, DataLoader, Dataset, Dataset]:
-    """获取数据加载器。
-    
-    从指定的数据根目录创建训练集、验证集和校准集的数据加载器，以及对应的数据集对象。
-    
-    Args:
-        data_root (str): 数据集根目录路径，包含train和val子目录。
-        batch_size (int, optional): 批次大小，默认256。
-        num_workers (int, optional): 数据加载器工作线程数，默认47。
-        device (torch.device, optional): 设备类型，默认为None。
-    
-    Returns:
-        tuple[DataLoader, DataLoader, DataLoader, Dataset, Dataset]: 
-            - 第1个元素：训练集数据加载器
-            - 第2个元素：验证集数据加载器
-            - 第3个元素：校准集数据加载器
-            - 第4个元素：训练集数据集对象
-            - 第5个元素：验证集数据集对象
+ImageFile.LOAD_TRUNCATED_IMAGES = True
+
+def get_data_loaders(
+    data_root: str,
+    batch_size: int = 256,
+    num_workers: int = 47,
+    device: "torch.device | None" = None,
+) -> "tuple[DataLoader[object], DataLoader[object], DataLoader[object], Dataset[object], Dataset[object]]":
+    """创建训练/验证/校准数据加载器。
+
+    功能描述：
+    从指定的数据根目录创建训练集、验证集与校准集的数据加载器（DataLoader），并返回对应的数据集对象。
+
+    参数说明：
+    - data_root (str): 数据集根目录路径，目录下应包含 train 与 val 子目录（ImageFolder 结构）。
+    - batch_size (int): 批次大小。
+    - num_workers (int): DataLoader 的工作线程数。
+    - device (torch.device | None): 目标设备。当前实现中未使用该参数，仅作为调用侧配置占位。
+
+    返回值说明：
+    - tuple[DataLoader[object], DataLoader[object], DataLoader[object], Dataset[object], Dataset[object]]:
+      依次为训练集 DataLoader、验证集 DataLoader、校准集 DataLoader、训练集 Dataset、验证集 Dataset。
+
+    可能抛出的异常：
+    - FileNotFoundError: 当 data_root/train 或 data_root/val 不存在时，由 ImageFolder 触发。
+    - RuntimeError: 当数据解码/读取失败或 DataLoader 多进程加载异常时，由底层依赖触发。
+
+    使用示例：
+    >>> from utils.data_loader import get_data_loaders
+    >>> # 需要存在 ImageFolder 结构的数据集目录；此示例仅展示调用方式
+    >>> _ = get_data_loaders("path/to/dataset", batch_size=32)  # doctest: +SKIP
     """
     train_transform = transforms.Compose([
         transforms.RandomResizedCrop(224),
@@ -66,4 +86,3 @@ def get_data_loaders(data_root: str, batch_size: int = 256, num_workers: int = 4
     )
     
     return train_loader, val_loader, calibration_loader, train_dataset, val_dataset
-

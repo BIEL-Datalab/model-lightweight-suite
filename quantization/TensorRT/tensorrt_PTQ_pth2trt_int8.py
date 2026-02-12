@@ -1,3 +1,9 @@
+"""基于 TensorRT 的 PTQ（INT8）量化脚本。
+
+本脚本提供一个命令行入口，用于将 PyTorch 权重转换为 WTS，并构建或加载 TensorRT 引擎，
+以完成 INT8（可选）量化部署流程。
+"""
+
 import argparse
 import os
 import sys
@@ -24,7 +30,25 @@ from utils.quantization_utils import create_output_directory
 
 
 def parse_args() -> argparse.Namespace:
-    """解析命令行参数。"""
+    """解析命令行参数。
+
+    功能描述：
+    定义并解析 TensorRT PTQ 脚本所需的命令行参数，包括 CUDA 设备、输入权重路径、WTS 输出路径、
+    引擎输出路径、校准目录与批次/输入输出尺寸等。
+
+    参数说明：
+    - 无。
+
+    返回值说明：
+    - argparse.Namespace: 解析后的参数对象。
+
+    可能抛出的异常：
+    - SystemExit: 当参数解析失败或触发 ``--help`` 时由 argparse 抛出。
+
+    使用示例：
+    >>> from quantization.TensorRT.tensorrt_PTQ_pth2trt_int8 import parse_args
+    >>> _ = parse_args()  # doctest: +SKIP
+    """
     parser = argparse.ArgumentParser(description="使用tensorrt进行模型int8量化")
     parser.add_argument("--cuda_id", type=int, default=0, help="使用第几块GPU")
     parser.add_argument("--input", default="models/trained/resnet50_imagenette_best_8031.pth", help="输入PyTorch模型文件路径")
@@ -51,7 +75,28 @@ def parse_args() -> argparse.Namespace:
 
 
 def validate_args(args: argparse.Namespace) -> None:
-    """验证并处理命令行参数。"""
+    """验证并修正命令行参数组合。
+
+    功能描述：
+    对 ``--serialize/--deserialize`` 的组合做兼容性处理，避免出现两者同时启用或均未启用导致流程不明确。
+
+    参数说明：
+    - args (argparse.Namespace): 参数对象（会被就地修改）。
+
+    返回值说明：
+    - None: 无返回值。
+
+    可能抛出的异常：
+    - 无。
+
+    使用示例：
+    >>> import argparse
+    >>> from quantization.TensorRT.tensorrt_PTQ_pth2trt_int8 import validate_args
+    >>> a = argparse.Namespace(serialize=False, deserialize=False)
+    >>> validate_args(a)
+    >>> a.serialize
+    True
+    """
     if args.serialize and args.deserialize:
         print("警告: 同时指定了--serialize和--deserialize，默认使用serialize模式")
         args.deserialize = False
@@ -61,7 +106,25 @@ def validate_args(args: argparse.Namespace) -> None:
 
 
 def check_device(args: argparse.Namespace) -> None:
-    """检查并设置CUDA设备。"""
+    """检查并修正 CUDA 设备索引。
+
+    功能描述：
+    初始化 CUDA 并检查 ``args.cuda_id`` 是否在可用范围内；若越界则回退到 0。
+
+    参数说明：
+    - args (argparse.Namespace): 参数对象（会被就地修改）。
+
+    返回值说明：
+    - None: 无返回值。
+
+    可能抛出的异常：
+    - Exception: 当 CUDA 初始化失败时由 PyCUDA 触发。
+
+    使用示例：
+    >>> import argparse
+    >>> from quantization.TensorRT.tensorrt_PTQ_pth2trt_int8 import check_device
+    >>> check_device(argparse.Namespace(cuda_id=0))  # doctest: +SKIP
+    """
     cuda.init()
     if args.cuda_id >= cuda.Device.count():
         print(f"警告: 指定的设备索引 {args.cuda_id} 超出范围，使用默认设备 0")
@@ -70,7 +133,26 @@ def check_device(args: argparse.Namespace) -> None:
 
 
 def run_model_conversion(args: argparse.Namespace) -> None:
-    """执行PyTorch模型到WTS格式的转换。"""
+    """执行 PyTorch 权重到 WTS 的转换步骤。
+
+    功能描述：
+    当未设置 ``args.skip_convert`` 时，调用 ``convert_pth_to_wts`` 将 PyTorch 权重转换为 WTS；
+    若转换失败则退出进程。
+
+    参数说明：
+    - args (argparse.Namespace): 参数对象（可能会补全 output/weight_path）。
+
+    返回值说明：
+    - None: 无返回值。
+
+    可能抛出的异常：
+    - SystemExit: 当转换失败时触发（显式 ``sys.exit(1)``）。
+
+    使用示例：
+    >>> import argparse
+    >>> from quantization.TensorRT.tensorrt_PTQ_pth2trt_int8 import run_model_conversion
+    >>> run_model_conversion(argparse.Namespace(skip_convert=True))  # doctest: +SKIP
+    """
     if not args.skip_convert:
         if args.output is None:
             base_name = os.path.splitext(os.path.basename(args.input))[0]
@@ -87,7 +169,26 @@ def run_model_conversion(args: argparse.Namespace) -> None:
 
 
 def execute_main_operation(args: argparse.Namespace) -> None:
-    """执行主操作（序列化或推理）。"""
+    """执行主操作（序列化构建或反序列化推理）。
+
+    功能描述：
+    当 ``args.serialize`` 为 True 时调用 ``serialize_engine`` 构建并保存引擎；
+    否则调用 ``test_inference`` 加载引擎并做推理验证。
+
+    参数说明：
+    - args (argparse.Namespace): 参数对象，需包含引擎构建/推理所需的各项属性。
+
+    返回值说明：
+    - None: 无返回值。
+
+    可能抛出的异常：
+    - Exception: 当 TensorRT 构建或推理失败时由底层依赖触发。
+
+    使用示例：
+    >>> import argparse
+    >>> from quantization.TensorRT.tensorrt_PTQ_pth2trt_int8 import execute_main_operation
+    >>> execute_main_operation(argparse.Namespace(serialize=False, engine_path="m.engine"))  # doctest: +SKIP
+    """
     print("\n" + "="*60)
     print("TensorRT 10.0.1 ResNet50 INT8 量化工具")
     print("="*60)
@@ -126,7 +227,28 @@ def execute_main_operation(args: argparse.Namespace) -> None:
 
 
 def main() -> None:
-    """使用TensorRT进行模型INT8量化的主函数。"""
+    """TensorRT PTQ 脚本主入口。
+
+    功能描述：
+    依次完成：
+    1) 参数解析；
+    2) 参数验证与设备检查；
+    3) 可选的 PyTorch->WTS 转换；
+    4) 序列化构建引擎或加载引擎推理验证。
+
+    参数说明：
+    - 无。
+
+    返回值说明：
+    - None: 无返回值。
+
+    可能抛出的异常：
+    - SystemExit: 当捕获到异常时显式退出（exit code=1）。
+
+    使用示例：
+    >>> from quantization.TensorRT.tensorrt_PTQ_pth2trt_int8 import main
+    >>> main()  # doctest: +SKIP
+    """
     try:
         # 1. 解析命令行参数
         args = parse_args()

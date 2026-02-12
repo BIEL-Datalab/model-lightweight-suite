@@ -1,3 +1,8 @@
+"""PyTorch INT8 评估综合脚本入口。
+
+本脚本用于在固定环境与默认路径配置下运行 Torch INT8 评估流水线，并将结果落盘到 results 目录。
+"""
+
 import os
 import sys
 import warnings
@@ -24,6 +29,26 @@ from evaluation.pipelines.torch_int8 import TorchInt8EvalConfig, TorchInt8EvalPa
 
 
 def main(enable_visualization: bool = False) -> str:
+    """运行 Torch INT8 评估并返回结果目录。
+
+    功能描述：
+    按本仓库约定的默认路径构建配置与路径对象，调用 ``evaluation.pipelines.torch_int8.run`` 执行评估，
+    并返回结果目录路径。
+
+    参数说明：
+    - enable_visualization (bool): 是否启用评估结果可视化输出。
+
+    返回值说明：
+    - str: 结果目录路径。
+
+    可能抛出的异常：
+    - FileNotFoundError: 当默认模型/数据集路径不存在时触发。
+    - Exception: 当评估流程内部依赖执行失败时触发。
+
+    使用示例：
+    >>> from evaluation.comprehensive_evaluation_torch_int8 import main
+    >>> _ = main(enable_visualization=False)  # doctest: +SKIP
+    """
     fp32_model_path = os.path.join(project_root, "models/trained/resnet50_imagenette_best_8031.pth")
     int8_model_path = os.path.join(project_root, "models/quantized/int8/resnet50_imagenette_torch_int8.pth")
     dataset_path = os.path.join(project_root, "data_set/imagenette")
@@ -56,4 +81,3 @@ if __name__ == "__main__":
 
     result_dir = main(enable_visualization=args.visualization)
     print(f"所有结果已保存到: {result_dir}")
-

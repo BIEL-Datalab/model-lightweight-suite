@@ -1,3 +1,10 @@
+"""评估报告构建工具。
+
+本模块将评估得到的结果字典整理为：
+- JSON 结构化报告（便于程序读取）
+- Markdown 人类可读报告（便于直接查看/分享）
+"""
+
 from __future__ import annotations
 
 from datetime import datetime
@@ -6,10 +13,31 @@ import torch
 
 
 def build_json_report(
-    results: dict,
-    model_paths: dict,
-    test_config: dict,
-) -> dict:
+    results: dict[str, dict[str, object]],
+    model_paths: dict[str, str],
+    test_config: dict[str, object],
+) -> dict[str, object]:
+    """构建 JSON 格式的评估报告数据结构。
+
+    功能描述：
+    将 ``results`` 中不同后端的评估结果提取为可序列化字段（float/str/list 等），
+    并附带评估时间、测试配置与模型路径信息。
+
+    参数说明：
+    - results (dict[str, dict[str, object]]): 评估结果字典，外层键为模型后端标识。
+    - model_paths (dict[str, str]): 模型路径字典。
+    - test_config (dict[str, object]): 测试配置字典（批次大小、样本数、设备等）。
+
+    返回值说明：
+    - dict[str, object]: JSON 报告字典。
+
+    可能抛出的异常：
+    - KeyError: 当 ``results`` 缺少必需键时触发。
+
+    使用示例：
+    >>> from evaluation.modelopt.reporting import build_json_report
+    >>> _ = build_json_report(results={"pytorch": {}, "onnx_original": {}, "onnx_quantized": {}, "tensorrt": {}}, model_paths={}, test_config={})  # doctest: +SKIP
+    """
     report_data = {
         "evaluation_time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "test_config": test_config,
@@ -36,8 +64,32 @@ def build_json_report(
     return report_data
 
 
-def build_markdown_report(results: dict, model_paths: dict, device_display: str, batch_size: int) -> str:
+def build_markdown_report(
+    results: dict[str, dict[str, object]], model_paths: dict[str, str], device_display: str, batch_size: int
+) -> str:
+    """构建 Markdown 格式的评估报告文本。
+
+    功能描述：
+    将评估结果以 Markdown 表格与结论小节的形式输出，便于直接查看与分享。
+
+    参数说明：
+    - results (dict[str, dict[str, object]]): 评估结果字典。
+    - model_paths (dict[str, str]): 模型路径字典。
+    - device_display (str): 设备展示字符串。
+    - batch_size (int): 批次大小。
+
+    返回值说明：
+    - str: Markdown 报告内容。
+
+    可能抛出的异常：
+    - KeyError: 当 ``results`` 缺少必需键时触发。
+
+    使用示例：
+    >>> from evaluation.modelopt.reporting import build_markdown_report
+    >>> _ = build_markdown_report(results={"pytorch": {"labels": []}, "onnx_original": {}, "onnx_quantized": {}, "tensorrt": {}}, model_paths={}, device_display="cpu", batch_size=1)  # doctest: +SKIP
+    """
     def row(key: str) -> str:
+        """构建结果表格的一行字符串（内部工具函数）。"""
         r = results[key]
         return (
             f"| {key} | {device_display} | {r['accuracy']:.4f} | {r['precision']:.4f} | {r['recall']:.4f} | "
@@ -83,4 +135,3 @@ def build_markdown_report(results: dict, model_paths: dict, device_display: str,
 - **准确率差异 (TensorRT - PyTorch)**: {accuracy_diff:.4f} ({accuracy_diff*100:.2f}%)
 - **吞吐量提升 (TensorRT vs PyTorch)**: {throughput_improvement:.1f}%
 """
-

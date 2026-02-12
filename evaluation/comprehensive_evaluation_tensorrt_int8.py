@@ -1,3 +1,8 @@
+"""TensorRT INT8 评估综合脚本入口。
+
+本脚本用于在固定环境与默认路径配置下运行 TensorRT INT8 评估流水线，并将结果落盘到 results 目录。
+"""
+
 import os
 import sys
 import warnings
@@ -24,6 +29,26 @@ from evaluation.pipelines.tensorrt_int8 import TensorRTEvalConfig, TensorRTEvalP
 
 
 def main() -> str:
+    """运行 TensorRT INT8 评估并返回结果目录。
+
+    功能描述：
+    按本仓库约定的默认路径构建配置与路径对象，调用 ``evaluation.pipelines.tensorrt_int8.run`` 执行评估，
+    并返回结果目录路径。
+
+    参数说明：
+    - 无。
+
+    返回值说明：
+    - str: 结果目录路径。
+
+    可能抛出的异常：
+    - FileNotFoundError: 当默认模型/数据集路径不存在时触发。
+    - Exception: 当评估流程内部依赖执行失败时触发。
+
+    使用示例：
+    >>> from evaluation.comprehensive_evaluation_tensorrt_int8 import main
+    >>> _ = main()  # doctest: +SKIP
+    """
     fp32_model_path = os.path.join(project_root, "models/trained/resnet50_imagenette_best_8031.pth")
     tensorrt_model_path = os.path.join(
         project_root, "models/quantized/int8/resnet50_imagenette_trt_int8_x86.engine"

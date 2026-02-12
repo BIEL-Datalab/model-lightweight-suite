@@ -1,5 +1,11 @@
 #!/usr/bin/env python3
 
+"""TensorRT INT8 校准图像准备脚本。
+
+本模块从 ImageFolder/ImageNet 风格目录中抽样图片，统一调整尺寸并保存到输出目录，
+用于 TensorRT INT8 量化流程的校准数据输入。
+"""
+
 import os
 import random
 import glob
@@ -7,20 +13,36 @@ from PIL import Image
 import argparse
 from collections import defaultdict
 
-def prepare_calib_images(input_dir: str, output_dir: str, num_images: int = 200, target_size: tuple = (224, 224), shuffle_seed: int = 42) -> None:
-    """准备TensorRT INT8量化的校准图像。
-    
-    从输入目录中随机选择指定数量的图像，调整大小后保存到输出目录，用于TensorRT INT8量化校准。
-    
-    Args:
-        input_dir (str): 源图像目录，支持ImageNet格式（包含类别子目录）。
-        output_dir (str): 校准图像保存目录。
-        num_images (int, optional): 选择的图像数量，默认200。
-        target_size (tuple, optional): 目标图像尺寸，默认(224, 224)。
-        shuffle_seed (int, optional): 随机种子，用于可复现的结果，默认42。
-    
-    Returns:
-        None
+def prepare_calib_images(
+    input_dir: str,
+    output_dir: str,
+    num_images: int = 200,
+    target_size: tuple[int, int] = (224, 224),
+    shuffle_seed: int = 42,
+) -> None:
+    """准备 TensorRT INT8 量化的校准图像。
+
+    功能描述：
+    从 ``input_dir`` 中递归搜集常见图片格式文件，按 ``shuffle_seed`` 固定随机性后抽样 ``num_images`` 张，
+    将图片转换为 RGB 并缩放到 ``target_size``，最终以 ``calib_XXXX.jpg`` 的命名保存到 ``output_dir``。
+
+    参数说明：
+    - input_dir (str): 源图像目录，支持 ImageNet/ImageFolder 格式（包含类别子目录）。
+    - output_dir (str): 校准图像保存目录。
+    - num_images (int): 选择的图像数量。
+    - target_size (tuple[int, int]): 目标图像尺寸（宽, 高）。
+    - shuffle_seed (int): 随机种子，用于可复现的抽样结果。
+
+    返回值说明：
+    - None: 无返回值。
+
+    可能抛出的异常：
+    - OSError: 当输出目录不可写或图片保存失败时触发（由 PIL/文件系统触发）。
+    - ValueError: 当随机抽样参数不合法时由 ``random.sample`` 触发。
+
+    使用示例：
+    >>> from utils.prepare_calib_images import prepare_calib_images
+    >>> prepare_calib_images("path/to/train", "path/to/calib", num_images=10)  # doctest: +SKIP
     """
     random.seed(shuffle_seed)
     

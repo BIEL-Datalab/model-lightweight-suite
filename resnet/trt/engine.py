@@ -1,3 +1,10 @@
+"""TensorRT 引擎序列化与推理验证工具。
+
+本模块提供：
+- ``serialize_engine``：基于 WTS 权重构建并保存 TensorRT 引擎（可选 INT8 校准）
+- ``test_inference``：加载引擎并执行一次随机输入推理用于快速验证
+"""
+
 from __future__ import annotations
 
 import os
@@ -25,6 +32,54 @@ def serialize_engine(
     calib_dataset_size: int,
     engine_path: str,
 ) -> None:
+    """构建并保存 TensorRT 引擎文件。
+
+    功能描述：
+    加载 WTS 权重并创建显式 batch 的 TensorRT 网络，构建 ResNet50 拓扑并标记输出；
+    当 ``use_int8`` 为 True 时创建 INT8 校准器并设置到 builder config；
+    最终构建序列化引擎并写入 ``engine_path``。
+
+    参数说明：
+    - max_batch_size (int): 显式 batch 维度大小（shape 第 0 维）。
+    - use_int8 (bool): 是否启用 INT8 校准与 INT8 构建标志。
+    - weight_path (str): WTS 权重文件路径。
+    - input_blob_name (str): 输入张量名称。
+    - input_h (int): 输入高度。
+    - input_w (int): 输入宽度。
+    - output_size (int): 输出类别数。
+    - output_blob_name (str): 输出张量名称。
+    - eps (float): BatchNorm 数值稳定项。
+    - calib_dir (str): 校准图片目录路径。
+    - calib_batch_size (int): 校准 batch 大小。
+    - calib_dataset_size (int): 校准数据集大小上限。
+    - engine_path (str): 引擎输出路径。
+
+    返回值说明：
+    - None: 无返回值。
+
+    可能抛出的异常：
+    - FileNotFoundError: 当权重文件或校准目录不存在时由 ``require_exists`` 触发。
+    - RuntimeError: 当引擎构建失败时触发。
+    - OSError: 当写入引擎文件失败时触发。
+
+    使用示例：
+    >>> from resnet.trt.engine import serialize_engine
+    >>> serialize_engine(  # doctest: +SKIP
+    ...     max_batch_size=1,
+    ...     use_int8=False,
+    ...     weight_path="model.wts",
+    ...     input_blob_name="data",
+    ...     input_h=224,
+    ...     input_w=224,
+    ...     output_size=10,
+    ...     output_blob_name="prob",
+    ...     eps=1e-5,
+    ...     calib_dir="data_set/calib_images",
+    ...     calib_batch_size=8,
+    ...     calib_dataset_size=2000,
+    ...     engine_path="model.engine",
+    ... )
+    """
     import tensorrt as trt
 
     if use_int8:
@@ -82,6 +137,27 @@ def serialize_engine(
 
 
 def test_inference(engine_path: str) -> None:
+    """加载 TensorRT 引擎并执行一次推理验证。
+
+    功能描述：
+    反序列化 ``engine_path`` 指向的引擎，创建执行上下文并用随机输入执行一次异步推理，
+    主要用于验证引擎可被正确加载与执行。
+
+    参数说明：
+    - engine_path (str): TensorRT 引擎文件路径。
+
+    返回值说明：
+    - None: 无返回值。
+
+    可能抛出的异常：
+    - FileNotFoundError: 当引擎文件不存在时由 ``require_exists`` 触发。
+    - RuntimeError: 当引擎加载或上下文创建失败时触发。
+    - Exception: 当 PyCUDA/TensorRT 执行失败时由底层依赖触发。
+
+    使用示例：
+    >>> from resnet.trt.engine import test_inference
+    >>> test_inference("model.engine")  # doctest: +SKIP
+    """
     import pycuda.driver as cuda
     import tensorrt as trt
 
@@ -119,4 +195,3 @@ def test_inference(engine_path: str) -> None:
 
     device_input.free()
     device_output.free()
-
